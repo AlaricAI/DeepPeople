@@ -2,80 +2,87 @@ import streamlit as st
 from fastai.vision.all import *
 import pathlib
 import PIL
-from PIL import Image
 import platform
+import requests
+import os
 
-# Set title and description
-st.title("Age and Gender Classifier")
-st.write("Upload a face image to classify the person's age group (young/middle/old) and gender")
+# Sarlavha
+st.title("Yosh va Jinsni Aniqlash Modeli")
+st.write("Rasm yuklang, model shaxsning yoshi (yosh/o'rta/qari) va jinsini aniqlaydi")
 
-# Temporary fix for Linux systems
-plt = platform.system()
-if plt == 'Linux': pathlib.WindowsPath = pathlib.PosixPath
-
-# Load the model
+# Modelni yuklab olish funksiyasi
 @st.cache_resource
 def load_model():
     try:
-        return load_learner('age_gender_model.pkl')
+        # Agar model fayli yo'q bo'lsa, internetdan yuklab olamiz
+        model_url = "https://drive.google.com/file/d/1q5VXxhwe8QwhQfOA-qLXUWmpkar_ZKjt/view?usp=sharing"
+        model_path = "age_gender_model.pkl"
+        
+        if not os.path.exists(model_path):
+            st.warning("Model yuklanmoqda...")
+            response = requests.get(model_url)
+            with open(model_path, 'wb') as f:
+                f.write(response.content)
+        
+        return load_learner(model_path)
     except Exception as e:
-        st.error(f"Model file not found. Please ensure 'age_gender_model.pkl' is in the same directory. Error: {str(e)}")
+        st.error(f"Model yuklanmadi. Xato: {str(e)}")
         return None
 
+# Linux tizimlari uchun
+if platform.system() == 'Linux': 
+    pathlib.WindowsPath = pathlib.PosixPath
+
+# Modelni yuklash
 learn = load_model()
 
-# File uploader
-uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
+# Rasm yuklash qismi
+uploaded_file = st.file_uploader("Rasm tanlang...", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None and learn is not None:
-    # Display the uploaded image
-    image = Image.open(uploaded_file)
-    st.image(image, caption='Uploaded Image', use_column_width=True)
-    
-    # Make prediction
     try:
-        # Convert to fastai image and predict
-        img = PILImage.create(uploaded_file)
-        pred, pred_idx, probs = learn.predict(img)
+        # Rasmni ko'rsatish
+        img = PIL.Image.open(uploaded_file)
+        st.image(img, caption='Yuklangan rasm', use_column_width=True)
         
-        # Display prediction
-        gender, age = pred.split('_')
-        gender = "Male" if gender == "male" else "Female"
+        # Bashorat qilish
+        img_fastai = PILImage.create(uploaded_file)
+        pred, pred_idx, probs = learn.predict(img_fastai)
         
-        st.subheader("Prediction Results:")
+        # Natijalarni o'zbek tilida ko'rsatish
+        jins, yosh = pred.split('_')
+        jins_uz = "Erkak" if jins == "male" else "Ayol"
+        yosh_uz = {
+            'young': 'Yosh (18 dan kichik)',
+            'middle': "O'rta yosh (18-45)",
+            'old': 'Qari (45 dan katta)'
+        }.get(yosh, yosh)
+        
+        st.subheader("Natijalar:")
         col1, col2 = st.columns(2)
         
         with col1:
-            st.metric(label="Gender", value=gender)
+            st.metric(label="Jins", value=jins_uz)
             
         with col2:
-            st.metric(label="Age Group", value=age.capitalize())
+            st.metric(label="Yosh guruhi", value=yosh_uz)
         
-        # Show confidence
-        st.write(f"Confidence: {probs[pred_idx]*100:.1f}%")
+        st.write(f"Ishonchlilik darajasi: {probs[pred_idx]*100:.1f}%")
         
-        # Show probabilities for all classes
-        st.subheader("Probabilities for each class:")
+        st.subheader("Barcha guruhlar bo'yicha ehtimollar:")
         for idx, prob in enumerate(probs):
-            st.write(f"{learn.dls.vocab[idx]}: {prob*100:.1f}%")
+            label_uz = learn.dls.vocab[idx].replace('male', 'Erkak').replace('female', 'Ayol')
+            st.write(f"{label_uz}: {prob*100:.1f}%")
             
     except Exception as e:
-        st.error(f"Error processing image: {str(e)}")
+        st.error(f"Rasmni tahlil qilishda xato: {str(e)}")
 
-# Add some instructions
-st.sidebar.header("Instructions")
+# Qo'shimcha ma'lumotlar
+st.sidebar.header("Ko'rsatmalar")
 st.sidebar.write("""
-1. Upload a clear frontal face image
-2. The model will predict gender and age group
-3. Results will show with confidence percentages
+1. Aniq yuz ko'rinadigan rasm yuklang
+2. Model jins va yosh guruhini aniqlaydi
+3. Natijalar ishonchlilik foizi bilan ko'rsatiladi
 
-Note: Works best with cropped face images.
-""")
-
-# Add model info
-st.sidebar.header("Model Information")
-st.sidebar.write("""
-- Model: ResNet34
-- Classes: 6 (male/female × young/middle/old)
-- Training data: Balanced UTKFace subset (1000 images per class)
+Eslatma: Yaxshiroq natija uchun faqat yuz bo'lgan rasmlardan foydalaning.
 """)
