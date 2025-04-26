@@ -3,7 +3,7 @@ from fastai.vision.all import *
 import pathlib
 import PIL
 from PIL import Image
-import numpy as np
+import platform
 
 # Set title and description
 st.title("Age and Gender Classifier")
@@ -18,8 +18,8 @@ if plt == 'Linux': pathlib.WindowsPath = pathlib.PosixPath
 def load_model():
     try:
         return load_learner('age_gender_model.pkl')
-    except:
-        st.error("Model file not found. Please ensure 'age_gender_model.pkl' is in the same directory.")
+    except Exception as e:
+        st.error(f"Model file not found. Please ensure 'age_gender_model.pkl' is in the same directory. Error: {str(e)}")
         return None
 
 learn = load_model()
@@ -27,41 +27,40 @@ learn = load_model()
 # File uploader
 uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
 
-if uploaded_file is not None:
+if uploaded_file is not None and learn is not None:
     # Display the uploaded image
     image = Image.open(uploaded_file)
     st.image(image, caption='Uploaded Image', use_column_width=True)
     
     # Make prediction
-    if learn is not None:
-        try:
-            # Convert to fastai image and predict
-            img = PILImage.create(uploaded_file)
-            pred, pred_idx, probs = learn.predict(img)
+    try:
+        # Convert to fastai image and predict
+        img = PILImage.create(uploaded_file)
+        pred, pred_idx, probs = learn.predict(img)
+        
+        # Display prediction
+        gender, age = pred.split('_')
+        gender = "Male" if gender == "male" else "Female"
+        
+        st.subheader("Prediction Results:")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.metric(label="Gender", value=gender)
             
-            # Display prediction
-            gender, age = pred.split('_')
-            gender = "Male" if gender == "male" else "Female"
+        with col2:
+            st.metric(label="Age Group", value=age.capitalize())
+        
+        # Show confidence
+        st.write(f"Confidence: {probs[pred_idx]*100:.1f}%")
+        
+        # Show probabilities for all classes
+        st.subheader("Probabilities for each class:")
+        for idx, prob in enumerate(probs):
+            st.write(f"{learn.dls.vocab[idx]}: {prob*100:.1f}%")
             
-            st.subheader("Prediction Results:")
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.metric(label="Gender", value=gender)
-                
-            with col2:
-                st.metric(label="Age Group", value=age.capitalize())
-            
-            # Show confidence
-            st.write(f"Confidence: {probs[pred_idx]*100:.1f}%")
-            
-            # Show probabilities for all classes
-            st.subheader("Probabilities for each class:")
-            for idx, prob in enumerate(probs):
-                st.write(f"{learn.dls.vocab[idx]}: {prob*100:.1f}%")
-                
-        except Exception as e:
-            st.error(f"Error processing image: {str(e)}")
+    except Exception as e:
+        st.error(f"Error processing image: {str(e)}")
 
 # Add some instructions
 st.sidebar.header("Instructions")
